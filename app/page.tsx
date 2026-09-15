@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { allCodes, getCompatibility, isStudyCode } from "./compatibility";
 
 type AxisKey = "company" | "energy" | "rhythm" | "momentum";
 type QuizMode = "intro" | "quiz" | "result";
@@ -226,10 +227,6 @@ const traitCopy = {
   },
 } as const;
 
-function isStudyCode(value: string) {
-  return /^[AC][QT][SF][OP]$/.test(value);
-}
-
 function scoresFromAnswers(answers: Array<number | null>) {
   const scores: Record<AxisKey, number> = {
     company: 0,
@@ -251,48 +248,6 @@ function codeFromScores(scores: Record<AxisKey, number>) {
     .join("");
 }
 
-function scoresFromCode(code: string) {
-  const scores = { company: 0, energy: 0, rhythm: 0, momentum: 0 };
-  axisOrder.forEach((axis, index) => {
-    scores[axis] = code[index] === axes[axis].right ? 5 : -5;
-  });
-  return scores;
-}
-
-function getCompatibility(first: string, second: string) {
-  const same = (index: number) => first[index] === second[index];
-  const points = [same(0) ? 20 : 12, same(1) ? 20 : 8, same(2) ? 20 : 13];
-  const momentumPoints = same(3) ? (first[3] === "O" ? 20 : 10) : 16;
-  const score = 20 + points.reduce((total, value) => total + value, 0) + momentumPoints;
-
-  const notes = [
-    same(0)
-      ? `You both prefer ${traitCopy[first[0] as keyof typeof traitCopy].name.toLowerCase()} study time.`
-      : "One brings independence; the other brings shared momentum.",
-    same(1)
-      ? `Your ${traitCopy[first[1] as keyof typeof traitCopy].name.toLowerCase()} energy is naturally in sync.`
-      : "Agree on quiet blocks and talking blocks before you begin.",
-    same(2)
-      ? "Your planning rhythms line up without much negotiation."
-      : "Pair a clear finish line with freedom inside the session.",
-    same(3)
-      ? first[3] === "O"
-        ? "Both of you create momentum early and reliably."
-        : "You share a powerful sprint instinct — set an earlier mini-deadline."
-      : "The organiser can create runway; the sprinter can add late-stage energy.",
-  ];
-
-  return { score, notes };
-}
-
-function allCodes() {
-  return ["A", "C"].flatMap((one) =>
-    ["Q", "T"].flatMap((two) =>
-      ["S", "F"].flatMap((three) => ["O", "P"].map((four) => `${one}${two}${three}${four}`)),
-    ),
-  );
-}
-
 function DimensionPill({ code }: { code: string }) {
   return (
     <span className="mini-code" aria-label={code.split("").map((letter) => traitCopy[letter as keyof typeof traitCopy].name).join(", ")}>
@@ -309,19 +264,29 @@ export default function Home() {
   const [answers, setAnswers] = useState<Array<number | null>>(() => Array(questions.length).fill(null));
   const [sharedCode, setSharedCode] = useState<string | null>(null);
   const [compareCode, setCompareCode] = useState("");
-  const [copyState, setCopyState] = useState("Copy code");
+  const [copyState, setCopyState] = useState("Share result");
+  const quizHeadingRef = useRef<HTMLHeadingElement>(null);
+  const resultHeadingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
-    const incoming = new URLSearchParams(window.location.search).get("type")?.toUpperCase() ?? "";
-    if (isStudyCode(incoming)) {
-      setSharedCode(incoming);
-      setMode("result");
-    }
+    const timer = window.setTimeout(() => {
+      const incoming = new URLSearchParams(window.location.search).get("type")?.toUpperCase() ?? "";
+      if (isStudyCode(incoming)) {
+        setSharedCode(incoming);
+        setMode("result");
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (mode === "quiz") quizHeadingRef.current?.focus();
+    if (mode === "result") resultHeadingRef.current?.focus();
+  }, [mode, current]);
 
   const quizScores = useMemo(() => scoresFromAnswers(answers), [answers]);
   const code = sharedCode ?? codeFromScores(quizScores);
-  const resultScores = sharedCode ? scoresFromCode(sharedCode) : quizScores;
+  const resultScores = sharedCode ? null : quizScores;
   const resultName = typeNames[code] ?? "Your Studyprint";
 
   const matches = useMemo(
@@ -329,7 +294,7 @@ export default function Home() {
       allCodes()
         .filter((candidate) => candidate !== code)
         .map((candidate) => ({ code: candidate, ...getCompatibility(code, candidate) }))
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => a.setupCost - b.setupCost || a.code.localeCompare(b.code))
         .slice(0, 3),
     [code],
   );
@@ -340,6 +305,14 @@ export default function Home() {
     setCurrent(0);
     setCompareCode("");
     setMode("quiz");
+    window.history.replaceState({}, "", window.location.pathname);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function goHome() {
+    setSharedCode(null);
+    setCompareCode("");
+    setMode("intro");
     window.history.replaceState({}, "", window.location.pathname);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -366,18 +339,19 @@ export default function Home() {
     } catch {
       return;
     }
-    window.setTimeout(() => setCopyState("Copy code"), 1800);
+    window.setTimeout(() => setCopyState("Share result"), 1800);
   }
 
   const question = questions[current];
   const selectedAnswer = answers[current];
   const completed = answers.filter((answer) => answer !== null).length;
   const comparison = isStudyCode(compareCode) ? getCompatibility(code, compareCode) : null;
+  const invalidCompare = compareCode.length === 4 && !isStudyCode(compareCode);
 
   return (
     <main className="site-shell">
       <header className="topbar">
-        <button className="brand" onClick={() => setMode("intro")} aria-label="Studyprint home">
+        <button className="brand" onClick={goHome} aria-label="Studyprint home">
           <span className="brand-mark" aria-hidden="true">S</span>
           <span>STUDYPRINT</span>
         </button>
@@ -459,7 +433,7 @@ export default function Home() {
             <div className={`axis-tag ${axes[question.axis].color}`}>
               {axes[question.axis].left} / {axes[question.axis].right}
             </div>
-            <h1>{question.prompt}</h1>
+            <h1 ref={quizHeadingRef} tabIndex={-1}>{question.prompt}</h1>
             <div className="answer-poles" aria-hidden="true">
               <span>{question.left}</span>
               <span>{question.right}</span>
@@ -472,10 +446,27 @@ export default function Home() {
                   role="radio"
                   aria-checked={selectedAnswer === value}
                   aria-label={`${answerLabels[index]}: ${value < 0 ? question.left : value > 0 ? question.right : "In between"}`}
+                  tabIndex={selectedAnswer === null ? (index === 0 ? 0 : -1) : selectedAnswer === value ? 0 : -1}
                   onClick={() => {
                     const next = [...answers];
                     next[current] = value;
                     setAnswers(next);
+                  }}
+                  onKeyDown={(event) => {
+                    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+                    event.preventDefault();
+                    const last = answerValues.length - 1;
+                    const nextIndex = event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? last
+                        : (index + (event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1) + answerValues.length) % answerValues.length;
+                    const next = [...answers];
+                    next[current] = answerValues[nextIndex];
+                    setAnswers(next);
+                    event.currentTarget.parentElement
+                      ?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[nextIndex]
+                      ?.focus();
                   }}
                 >
                   <span>{index + 1}</span>
@@ -489,7 +480,7 @@ export default function Home() {
             </div>
           </div>
           <div className="quiz-nav">
-            <button className="back-button" onClick={() => current === 0 ? setMode("intro") : setCurrent(current - 1)}>← Back</button>
+            <button className="back-button" onClick={() => current === 0 ? goHome() : setCurrent(current - 1)}>← Back</button>
             {current === questions.length - 1 ? (
               <button className="primary-button" disabled={selectedAnswer === null} onClick={finishQuiz}>Reveal my code <span>✦</span></button>
             ) : (
@@ -507,7 +498,7 @@ export default function Home() {
           <div className="result-hero">
             <div className="result-intro">
               <p className="kicker"><span>YOUR RESULT</span> Meet your Studyprint</p>
-              <h1>{resultName}</h1>
+              <h1 ref={resultHeadingRef} tabIndex={-1}>{resultName}</h1>
               <p>{code.split("").map((letter) => traitCopy[letter as keyof typeof traitCopy].line).join(" ")}</p>
               <div className="result-actions">
                 <button className="primary-button" onClick={copyResult}>{copyState} <span>↗</span></button>
@@ -531,24 +522,36 @@ export default function Home() {
           <section className="breakdown" aria-labelledby="breakdown-title">
             <div className="section-heading compact">
               <p className="kicker"><span>01</span> Your breakdown</p>
-              <h2 id="breakdown-title">How your preferences stack up.</h2>
+              <div>
+                <h2 id="breakdown-title">How your preferences stack up.</h2>
+                {sharedCode && <p className="shared-source-note">This shared link contains the four-letter code, not the original answers, so preference-strength percentages are intentionally hidden.</p>}
+              </div>
             </div>
             <div className="breakdown-list">
-              {axisOrder.map((axis) => {
+              {axisOrder.map((axis, index) => {
                 const item = axes[axis];
-                const score = resultScores[axis];
-                const rightPercent = Math.round(((score + 8) / 16) * 100);
-                const chosen = score > 0 ? item.right : item.left;
+                const score = resultScores?.[axis] ?? null;
+                const rightPercent = score === null ? null : Math.round(((score + 8) / 16) * 100);
+                const chosen = code[index] as keyof typeof traitCopy;
+                const preferenceLabel = rightPercent === null
+                  ? "Code preference"
+                  : rightPercent === 50
+                    ? `Balanced · code uses ${chosen}`
+                    : `${Math.max(rightPercent, 100 - rightPercent)}% lean`;
                 return (
                   <article className="breakdown-row" key={axis}>
                     <div className={`trait-letter ${item.color}`}>{chosen}</div>
                     <div className="trait-detail">
-                      <div><h3>{traitCopy[chosen].name}</h3><span>{Math.max(rightPercent, 100 - rightPercent)}% lean</span></div>
+                      <div><h3>{traitCopy[chosen].name}</h3><span>{preferenceLabel}</span></div>
                       <p>{traitCopy[chosen].line}</p>
-                      <div className="trait-meter" aria-label={`${item.leftName} ${100 - rightPercent} percent, ${item.rightName} ${rightPercent} percent`}>
-                        <i style={{ left: `${rightPercent}%` }} />
-                      </div>
-                      <div className="meter-labels"><span>{item.leftName}</span><span>{item.rightName}</span></div>
+                      {rightPercent !== null && (
+                        <>
+                          <div className="trait-meter" aria-label={`${item.leftName} ${100 - rightPercent} percent, ${item.rightName} ${rightPercent} percent`}>
+                            <i style={{ left: `${rightPercent}%` }} />
+                          </div>
+                          <div className="meter-labels"><span>{item.leftName}</span><span>{item.rightName}</span></div>
+                        </>
+                      )}
                     </div>
                   </article>
                 );
@@ -575,7 +578,7 @@ export default function Home() {
             <div className="compat-copy">
               <p className="kicker"><span>03</span> Study compatibility</p>
               <h2 id="compatibility-title">Will your study styles click?</h2>
-              <p>Enter someone else’s four-letter code. Compatibility is about working agreements, not judging who studies “better.”</p>
+              <p>Enter someone else’s four-letter code. This practical comparison shows which study-session agreements may help — it does not measure friendship, intelligence, or learning ability.</p>
               <label htmlFor="compare-code">Their Studyprint</label>
               <div className="code-input-wrap">
                 <input
@@ -583,29 +586,37 @@ export default function Home() {
                   value={compareCode}
                   onChange={(event) => setCompareCode(event.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
                   placeholder="e.g. CTFO"
-                  aria-describedby="code-format"
+                  aria-describedby={invalidCompare ? "code-format code-error" : "code-format"}
+                  aria-invalid={invalidCompare}
                 />
                 <span>{compareCode.length}/4</span>
               </div>
               <small id="code-format">Use A/C · Q/T · S/F · O/P</small>
+              {invalidCompare && <p className="code-error" id="code-error" role="alert">That code is not valid. Check each letter against the key above.</p>}
             </div>
 
             <div className="compat-result" aria-live="polite">
               {comparison ? (
                 <>
-                  <div className="score-ring" style={{ "--score": comparison.score } as React.CSSProperties}>
-                    <div><strong>{comparison.score}</strong><span>/ 100</span></div>
+                  <div className="score-ring agreement-ring">
+                    <div><strong>{comparison.agreementCount}</strong><span>{comparison.agreementCount === 1 ? "agreement" : "agreements"}</span></div>
                   </div>
                   <div className="compat-summary">
                     <p><DimensionPill code={code} /> <span>+</span> <DimensionPill code={compareCode} /></p>
-                    <h3>{comparison.score >= 90 ? "Excellent study chemistry" : comparison.score >= 80 ? "Strong potential" : comparison.score >= 70 ? "Promising with a plan" : "Different by design"}</h3>
+                    <h3>{comparison.label}</h3>
+                    <p className="fit-note">{comparison.summary}</p>
                     <ul>{comparison.notes.map((note) => <li key={note}>{note}</li>)}</ul>
                   </div>
                 </>
+              ) : invalidCompare ? (
+                <div className="empty-compat invalid-compat">
+                  <div aria-hidden="true">CHECK CODE</div>
+                  <p>Studyprint codes use one letter from each pair: A/C, Q/T, S/F, and O/P.</p>
+                </div>
               ) : (
                 <div className="empty-compat">
                   <div aria-hidden="true">A? + C?</div>
-                  <p>Enter a complete code to see your match score and study-session advice.</p>
+                  <p>Enter a complete code to see your comparison and study-session advice.</p>
                 </div>
               )}
             </div>
@@ -614,7 +625,7 @@ export default function Home() {
           <section className="matches">
             <div>
               <p className="kicker"><span>04</span> Suggested matches</p>
-              <h2>Codes worth comparing.</h2>
+              <h2>Easiest session setups.</h2>
             </div>
             <div className="match-list">
               {matches.map((match, index) => (
@@ -622,7 +633,7 @@ export default function Home() {
                   <span>0{index + 1}</span>
                   <DimensionPill code={match.code} />
                   <strong>{typeNames[match.code]}</strong>
-                  <i>{match.score}% match →</i>
+                  <i>{match.agreementCount} {match.agreementCount === 1 ? "agreement" : "agreements"} →</i>
                 </button>
               ))}
             </div>

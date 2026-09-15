@@ -45,6 +45,11 @@ input:focus-visible {
   outline-offset: 4px;
 }
 
+.quiz-card h1:focus,
+.result-intro h1:focus {
+  outline: none;
+}
+
 .site-shell {
   min-height: 100vh;
   overflow: hidden;
@@ -716,6 +721,14 @@ footer > span {
   align-items: start;
 }
 
+.shared-source-note {
+  max-width: 620px;
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .breakdown-list {
   border-top: 2px solid var(--ink);
 }
@@ -884,6 +897,14 @@ footer > span {
   letter-spacing: 0.07em;
 }
 
+.code-error {
+  margin: 12px 0 0;
+  color: #7b160f;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .compat-result {
   min-height: 480px;
   display: grid;
@@ -902,7 +923,11 @@ footer > span {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: conic-gradient(var(--blue) calc(var(--score) * 1%), #ded9cf 0);
+  background: #ded9cf;
+}
+
+.score-ring.agreement-ring {
+  background: var(--blue);
 }
 
 .score-ring > div {
@@ -922,7 +947,7 @@ footer > span {
   line-height: 0.9;
 }
 
-.score-ring span { color: var(--muted); font-size: 11px; font-weight: 800; }
+.score-ring span { max-width: 84px; color: var(--muted); font-size: 11px; font-weight: 800; line-height: 1.15; text-align: center; }
 
 .compat-summary > p {
   display: flex;
@@ -938,6 +963,14 @@ footer > span {
   line-height: 1;
   text-transform: uppercase;
   letter-spacing: -0.04em;
+}
+
+.compat-summary .fit-note {
+  margin: -8px 0 20px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.45;
 }
 
 .compat-summary ul {
@@ -1002,6 +1035,11 @@ footer > span {
   margin: 16px auto 0;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.invalid-compat div {
+  color: var(--coral);
+  font-size: clamp(42px, 6vw, 72px);
 }
 
 .matches {
